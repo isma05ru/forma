@@ -1300,6 +1300,13 @@ async function boot() {
       <button class="btn primary block" data-a="eqDone">Готово</button>`);
   }
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    // Пришла новая версия: перезагружаемся сразу, но только если человек ничем
+    // не занят - посреди тренировки или открытой формы страницу не трогаем,
+    // тогда новая версия откроется при следующем запуске.
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !P && !document.querySelector('.sheet-wrap, .dialog-wrap')) location.reload();
+    });
     navigator.serviceWorker.register('sw.js').catch((e) => console.error(e));
   }
 }
