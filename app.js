@@ -25,7 +25,7 @@ const S = {
   workouts: [], sessions: [], weights: [], photos: [], measures: [], exercises: [],
   active: null,
   wSeg: 'ready', wFocus: 'all', wFit: true,
-  pSeg: 'body', metric: 'weight', range: 90,
+  pSeg: 'stats', cal: null, metric: 'weight', range: 90,
 };
 
 /* ---------- Сохранение ---------- */
@@ -184,6 +184,154 @@ function exHistory(exId) {
     if (sets.length) out.push({ d: S.sessions[i].day, sets });
   }
   return out;
+}
+
+/* ---------- Статистика и достижения ---------- */
+
+const MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const mondayOf = (day) => { const d = parseYmd(day); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d); };
+
+// Всё считается из записанных тренировок, отдельно нигде не хранится:
+// удалил тренировку - статистика и достижения честно пересчитались.
+function stats() {
+  const perDay = new Map(), perWeek = new Map();
+  let sec = 0, sets = 0, reps = 0, vol = 0, early = 0, late = 0, own = 0;
+  const programs = new Set(), exs = new Set();
+  for (const s of S.sessions) {
+    perDay.set(s.day, (perDay.get(s.day) || 0) + 1);
+    const wk = mondayOf(s.day);
+    perWeek.set(wk, (perWeek.get(wk) || 0) + 1);
+    sec += s.durationSec;
+    const st = sessionStats(s);
+    sets += st.sets; reps += st.reps; vol += st.vol;
+    const h = new Date(s.at).getHours();
+    if (h < 8) early = 1;
+    if (h >= 22) late = 1;
+    if (String(s.workoutId).startsWith('c_')) own = 1;
+    programs.add(s.workoutId);
+    for (const it of s.items) exs.add(it.ex);
+  }
+  const days = [...perDay.keys()].sort();
+  let bestStreak = 0, run = 0, prev = null;
+  for (const d of days) {
+    run = prev && Math.round((parseYmd(d) - parseYmd(prev)) / 864e5) === 1 ? run + 1 : 1;
+    if (run > bestStreak) bestStreak = run;
+    prev = d;
+  }
+  // Улучшения: сколько раз тренировка побила прежний лучший подход в упражнении.
+  let improvements = 0;
+  const best = new Map();
+  for (let i = S.sessions.length - 1; i >= 0; i--) {
+    for (const it of S.sessions[i].items) {
+      const b = bestSet(it.sets);
+      if (!b) continue;
+      const was = best.get(it.ex);
+      if (was !== undefined && setScore(b) > was) improvements++;
+      if (was === undefined || setScore(b) > was) best.set(it.ex, setScore(b));
+    }
+  }
+  return {
+    n: S.sessions.length, sec, sets, reps, vol, early, late, own, perDay, perWeek,
+    days: days.length, bestStreak, bestWeek: Math.max(0, ...perWeek.values()),
+    programs: programs.size, exs: exs.size, improvements,
+  };
+}
+
+function achievements(st = stats()) {
+  const a = (id, icon, name, desc, cur, target, unit = '') => ({ id, icon, name, desc, unit, cur: Math.min(cur, target), target, done: cur >= target });
+  const w = S.weights, goal = S.settings.goal;
+  const goalHit = goal && w.length > 1 && (w[0].kg - goal) * (w[w.length - 1].kg - goal) <= 0 ? 1 : 0;
+  const pd = S.photos.map((p) => p.date).sort();
+  const photoSpan = pd.length > 1 ? Math.round((parseYmd(pd[pd.length - 1]) - parseYmd(pd[0])) / 864e5) : 0;
+  return [
+    a('w1', '👟', 'Первый шаг', 'Выполнить первую тренировку.', st.n, 1),
+    a('w5', '🔆', 'Разогрев', 'Выполнить 5 тренировок.', st.n, 5),
+    a('w10', '🔟', 'Десятка', 'Выполнить 10 тренировок.', st.n, 10),
+    a('w25', '🥉', 'Четверть сотни', 'Выполнить 25 тренировок.', st.n, 25),
+    a('w50', '🥈', 'Полсотни', 'Выполнить 50 тренировок.', st.n, 50),
+    a('w100', '🥇', 'Сотня', 'Выполнить 100 тренировок.', st.n, 100),
+    a('s3', '🔥', 'Три дня подряд', 'Тренироваться 3 дня подряд.', st.bestStreak, 3),
+    a('s7', '🗓️', 'Неделя без пропусков', 'Тренироваться 7 дней подряд.', st.bestStreak, 7),
+    a('s14', '⚡', 'Две недели подряд', 'Тренироваться 14 дней подряд.', st.bestStreak, 14),
+    a('s30', '🌋', 'Месяц подряд', 'Тренироваться 30 дней подряд.', st.bestStreak, 30),
+    a('k3', '📈', 'Три за неделю', 'Сделать 3 тренировки за одну неделю.', st.bestWeek, 3),
+    a('k5', '🚀', 'Пять за неделю', 'Сделать 5 тренировок за одну неделю.', st.bestWeek, 5),
+    a('v1', '🏋️', 'Первая тонна', 'Поднять в сумме 1000 кг.', st.vol, 1000, 'кг'),
+    a('v10', '🦾', 'Десять тонн', 'Поднять в сумме 10 000 кг.', st.vol, 10000, 'кг'),
+    a('v50', '🏔️', 'Пятьдесят тонн', 'Поднять в сумме 50 000 кг.', st.vol, 50000, 'кг'),
+    a('t10', '⏱️', 'Десять часов', 'Провести на тренировках 10 часов.', st.sec / 3600, 10, 'ч'),
+    a('r5', '🎯', 'Расту', 'Пять раз улучшить свой результат в упражнении.', st.improvements, 5),
+    a('r20', '🏆', 'Рекордсмен', 'Двадцать раз улучшить свой результат.', st.improvements, 20),
+    a('p5', '🧭', 'Разнообразие', 'Попробовать 5 разных тренировок.', st.programs, 5),
+    a('e20', '🧩', 'Двадцать упражнений', 'Выполнить 20 разных упражнений.', st.exs, 20),
+    a('own', '🛠️', 'По-своему', 'Выполнить тренировку, собранную самостоятельно.', st.own, 1),
+    a('early', '🌅', 'Жаворонок', 'Закончить тренировку до 8 утра.', st.early, 1),
+    a('late', '🌙', 'Сова', 'Закончить тренировку после 22 часов.', st.late, 1),
+    a('bw1', '⚖️', 'На весах', 'Записать вес в первый раз.', w.length, 1),
+    a('bw10', '📒', 'Дневник веса', 'Сделать 10 записей веса.', w.length, 10),
+    a('goal', '🎉', 'Цель достигнута', 'Дойти до цели по весу, заданной в профиле.', goalHit, 1),
+    a('ph1', '📷', 'Первый снимок', 'Добавить первое фото прогресса.', S.photos.length, 1),
+    a('ph30', '🎞️', 'Месяц в кадре', 'Иметь снимки с разницей не меньше 30 дней.', photoSpan, 30, 'дн.'),
+  ];
+}
+const earnedIds = () => new Set(achievements().filter((x) => x.done).map((x) => x.id));
+
+function weekBars(st) {
+  const cur = parseYmd(mondayOf(today()));
+  const weeks = Array.from({ length: 8 }, (_, i) => { const d = new Date(cur); d.setDate(cur.getDate() - (7 - i) * 7); const k = ymd(d); return { k, n: st.perWeek.get(k) || 0 }; });
+  const max = Math.max(3, ...weeks.map((x) => x.n));
+  const W = 340, H = 120, bw = 26, gap = (W - 8 * bw) / 8, base = H - 22, top = 18;
+  return `<svg class="chart bars" viewBox="0 0 ${W} ${H}">${weeks.map((x, i) => {
+    const bx = gap / 2 + i * (bw + gap), h = x.n ? Math.max(6, (x.n / max) * (base - top)) : 3;
+    const d = parseYmd(x.k);
+    return `<rect x="${bx.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="6" class="${x.n ? (i === 7 ? 'bar now' : 'bar') : 'bar zero'}"/>
+      ${x.n ? `<text x="${(bx + bw / 2).toFixed(1)}" y="${(base - h - 5).toFixed(1)}" text-anchor="middle" class="lbl val">${x.n}</text>` : ''}
+      <text x="${(bx + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="lbl">${d.getDate()}.${pad(d.getMonth() + 1)}</text>`;
+  }).join('')}</svg>`;
+}
+
+function vStats() {
+  const st = stats();
+  const now = new Date();
+  const cal = S.cal || { y: now.getFullYear(), m: now.getMonth() };
+  const offset = (new Date(cal.y, cal.m, 1).getDay() + 6) % 7;
+  const dim = new Date(cal.y, cal.m + 1, 0).getDate();
+  const isNow = cal.y === now.getFullYear() && cal.m === now.getMonth();
+  let cells = '<span></span>'.repeat(offset), monthN = 0;
+  for (let d = 1; d <= dim; d++) {
+    const key = `${cal.y}-${pad(cal.m + 1)}-${pad(d)}`;
+    const n = st.perDay.get(key) || 0;
+    monthN += n;
+    const cls = `cd${key === today() ? ' today' : ''}${key > today() ? ' future' : ''}`;
+    cells += n ? `<button class="${cls} on" data-a="calDay" data-d="${key}">${d}${n > 1 ? `<sup>${n}</sup>` : ''}</button>` : `<span class="${cls}">${d}</span>`;
+  }
+  const time = st.sec < 3600 ? `${Math.round(st.sec / 60)}<small> мин</small>` : `${fmtKg(st.sec / 3600)}<small> ч</small>`;
+  const vol = st.vol >= 1000 ? `${fmtKg(st.vol / 1000)}<small> т</small>` : `${Math.round(st.vol)}<small> кг</small>`;
+  const cur = streak();
+  const ach = achievements(st).sort((x, y) => (y.done - x.done) || (y.cur / y.target - x.cur / x.target));
+  const got = ach.filter((x) => x.done).length;
+  return `
+    <div class="tiles">
+      <div class="card tile"><b>${st.n}</b><span>${plural(st.n, ['тренировка', 'тренировки', 'тренировок'])} всего</span></div>
+      <div class="card tile"><b>${time}</b><span>общее время</span></div>
+      <div class="card tile"><b>${st.days}</b><span>${plural(st.days, ['активный день', 'активных дня', 'активных дней'])}</span></div>
+      <div class="card tile"><b>${cur}<small> 🔥</small></b><span>${plural(cur, ['день', 'дня', 'дней'])} подряд сейчас</span></div>
+      <div class="card tile"><b>${st.bestStreak}</b><span>лучшая серия, ${plural(st.bestStreak, ['день', 'дня', 'дней'])}</span></div>
+      <div class="card tile"><b>${vol}</b><span>поднято всего</span></div>
+    </div>
+
+    <div class="card">
+      <div class="cal-head"><button class="x" data-a="calNav" data-d="-1">‹</button><div><b>${MONTH_NAMES[cal.m]} ${cal.y}</b><div class="muted">${monthN ? `${monthN} ${plural(monthN, ['тренировка', 'тренировки', 'тренировок'])}` : 'тренировок нет'}</div></div><button class="x" data-a="calNav" data-d="1" ${isNow ? 'disabled' : ''}>›</button></div>
+      <div class="cal"><i>П</i><i>В</i><i>С</i><i>Ч</i><i>П</i><i>С</i><i>В</i>${cells}</div>
+    </div>
+
+    <h2 class="sec">Тренировок по неделям</h2>
+    <div class="card">${weekBars(st)}<p class="hint">Последние восемь недель, под столбцом - понедельник.</p></div>
+
+    <h2 class="sec">Достижения <span class="muted">${got} из ${ach.length}</span></h2>
+    <div class="ach-grid">${ach.map((x) => `<button class="ach${x.done ? ' done' : ''}" data-a="achOpen" data-id="${x.id}"><i>${x.icon}</i><b>${x.name}</b>${x.done ? '<span class="got">получено</span>' : `<span class="bar"><u style="width:${Math.round((x.cur / x.target) * 100)}%"></u></span>`}</button>`).join('')}</div>
+
+    ${S.sessions.length ? `<h2 class="sec">Последние тренировки</h2>${S.sessions.slice(0, 5).map(sessionRow).join('')}${S.sessions.length > 5 ? '<button class="btn soft block" data-a="allHistory">Вся история</button>' : ''}` : ''}`;
 }
 
 /* ---------- Экран «Сегодня» ---------- */
@@ -590,7 +738,9 @@ async function finish() {
     return was && setScore(now) > setScore(was) ? { ex: it.ex, best: now } : null;
   }).filter(Boolean);
   const ok = await store(() => DB.put('sessions', session));
+  const hadAch = earnedIds();
   if (ok) { S.sessions.unshift(session); await clearActive(); }
+  P.achv = ok ? achievements().filter((x) => x.done && !hadAch.has(x.id)) : [];
   P.phase = 'done';
   P.session = session;
   P.saved = ok;
@@ -635,6 +785,7 @@ function drawPlayer() {
       <p class="muted">${esc(P.name)}</p>
       ${P.saved ? '' : '<div class="warn">Записать тренировку не удалось - на телефоне не хватило места.</div>'}
       ${P.records.length ? `<div class="card recs"><div class="eyebrow">${P.records.length > 1 ? 'Новые рекорды' : 'Новый рекорд'}</div>${P.records.map((r) => `<div><b>${esc(exOf(r.ex).name)}</b><span class="qty">${setLabel(r.best)}</span></div>`).join('')}</div>` : ''}
+      ${P.achv.length ? `<div class="card recs"><div class="eyebrow">${P.achv.length > 1 ? 'Новые достижения' : 'Новое достижение'}</div>${P.achv.map((x) => `<div><b>${x.icon} ${x.name}</b></div>`).join('')}</div>` : ''}
       <div class="tiles">
         <div class="card tile"><b>${fmtDur(P.session.durationSec)}</b><span>время</span></div>
         <div class="card tile"><b>${st.sets}</b><span>${plural(st.sets, ['подход', 'подхода', 'подходов'])}</span></div>
@@ -774,11 +925,11 @@ function vProgress() {
       ? `<p class="hint top0">Лучший подход по каждому упражнению. Нажмите, чтобы увидеть график.</p>${recs.map((r) => `<button class="card srow" data-a="openEx" data-id="${r.ex}"><div><h4>${esc(exOf(r.ex).name)}</h4><div class="muted">${fmtDate(r.d)}</div></div><span class="qty">${setLabel(r.best)}</span></button>`).join('')}`
       : '<div class="empty">После первой тренировки здесь появятся лучшие результаты по каждому упражнению.</div>';
   } else {
-    body = S.sessions.length ? S.sessions.map(sessionRow).join('') : '<div class="empty">Здесь появятся выполненные тренировки.</div>';
+    body = vStats();
   }
   return `
   <header class="top"><h1>Прогресс</h1></header>
-  <div class="seg">${[['body', 'Тело'], ['photos', 'Фото'], ['records', 'Рекорды'], ['history', 'История']].map(([k, v]) => `<button class="${S.pSeg === k ? 'on' : ''}" data-a="pSeg" data-k="${k}">${v}</button>`).join('')}</div>
+  <div class="seg">${[['stats', 'Обзор'], ['body', 'Тело'], ['photos', 'Фото'], ['records', 'Рекорды']].map(([k, v]) => `<button class="${S.pSeg === k ? 'on' : ''}" data-a="pSeg" data-k="${k}">${v}</button>`).join('')}</div>
   ${body}`;
 }
 
@@ -1158,6 +1309,25 @@ const A = {
     render();
   },
   openEx(el) { openEx(el.dataset.id); },
+  calNav(el) {
+    const now = new Date();
+    const cal = S.cal || { y: now.getFullYear(), m: now.getMonth() };
+    const d = new Date(cal.y, cal.m + +el.dataset.d, 1);
+    if (d > now) return;
+    S.cal = { y: d.getFullYear(), m: d.getMonth() };
+    render();
+  },
+  calDay(el) {
+    const list = S.sessions.filter((s) => s.day === el.dataset.d);
+    if (list.length === 1) openSession(list[0].id);
+    else if (list.length) sheet(`<div class="eyebrow">${fmtDate(el.dataset.d, true)}</div><h2>Тренировки за день</h2>${list.map(sessionRow).join('')}`);
+  },
+  allHistory() { sheet(`<h2>Вся история</h2>${S.sessions.map(sessionRow).join('')}`, true); },
+  achOpen(el) {
+    const x = achievements().find((y) => y.id === el.dataset.id);
+    const cur = x.target >= 1000 ? Math.round(x.cur) : Math.round(x.cur * 10) / 10;
+    choose(`${x.icon} ${x.name}`, `${x.desc} ${x.done ? 'Получено.' : x.target > 1 ? `Выполнено: ${fmtKg(cur)} из ${x.target}${x.unit ? ' ' + x.unit : ''}.` : 'Пока не получено.'}`, [{ label: 'Понятно', value: true }]);
+  },
 
   // План на неделю
   planOpen() { openPlan(); },

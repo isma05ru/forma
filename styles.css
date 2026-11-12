@@ -249,3 +249,32 @@ div.li.pick { cursor: pointer; }
 .li.pick .tag { vertical-align: 1px; }
 textarea.inp { font: inherit; color: inherit; resize: none; display: block; user-select: text; -webkit-user-select: text; }
 .sheet-body h2.sec { font-size: 20px; margin-top: 6px; }
+
+/* Обзор: статистика, календарь, достижения */
+.tile b small { font-size: 14px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.sec .muted { font-weight: 500; margin-left: 6px; }
+.cal-head { display: flex; justify-content: space-between; align-items: center; text-align: center; margin-bottom: 12px; }
+.cal-head b { font-size: 17px; }
+.cal-head .x { font-size: 20px; line-height: 1; }
+.cal-head .x:disabled { opacity: .25; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px 4px; justify-items: center; }
+.cal > i { font-style: normal; font-size: 12px; font-weight: 600; color: var(--muted); padding-bottom: 2px; }
+.cd { position: relative; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-variant-numeric: tabular-nums; text-align: center; }
+.cd.future { color: #55555f; }
+.cd.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.cd.on { background: var(--accent); color: var(--on-accent); font-weight: 800; }
+.cd.on.today { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.cd sup { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--text); color: #111; font-size: 10px; line-height: 16px; font-weight: 800; }
+.chart.bars .bar { fill: var(--accent); opacity: .45; }
+.chart.bars .bar.now { opacity: 1; }
+.chart.bars .bar.zero { fill: var(--card2); opacity: 1; }
+.ach-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ach { background: var(--card); border-radius: 18px; padding: 14px 8px 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; min-height: 128px; }
+.ach i { font-style: normal; font-size: 30px; width: 56px; height: 56px; border-radius: 50%; background: var(--card2); display: grid; place-items: center; filter: grayscale(1); opacity: .45; }
+.ach b { font-size: 12.5px; line-height: 1.2; color: var(--muted); }
+.ach .bar { width: 70%; height: 4px; border-radius: 2px; background: var(--card2); overflow: hidden; margin-top: auto; }
+.ach .bar u { display: block; height: 100%; background: var(--muted); border-radius: 2px; }
+.ach .got { font-size: 11px; font-weight: 700; color: var(--accent); margin-top: auto; }
+.ach.done { background: linear-gradient(160deg, #262d1b, var(--card) 75%); }
+.ach.done i { filter: none; opacity: 1; background: rgba(200, 245, 60, .16); }
+.ach.done b { color: var(--text); }
