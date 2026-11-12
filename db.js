@@ -3,17 +3,25 @@
 
 const DB = (() => {
   let db;
-  const KEYED = ['workouts', 'sessions', 'weights', 'photos', 'photoFiles'];
+  const KEYED = ['workouts', 'sessions', 'weights', 'photos', 'photoFiles', 'measures', 'exercises'];
 
   function open() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('forma', 1);
+      // Версия 2 добавила замеры и свои упражнения. Таблицы только добавляются:
+      // на телефоне уже лежат настоящие тренировки, пересоздавать нечего.
+      const req = indexedDB.open('forma', 2);
       req.onupgradeneeded = () => {
         const d = req.result;
-        d.createObjectStore('kv');
-        for (const s of KEYED) d.createObjectStore(s, { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
+        for (const s of KEYED) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' });
       };
-      req.onsuccess = () => { db = req.result; resolve(); };
+      req.onsuccess = () => {
+        db = req.result;
+        // Иначе вторая открытая вкладка со старой версией не дала бы обновиться.
+        db.onversionchange = () => db.close();
+        resolve();
+      };
+      req.onblocked = () => reject(new Error('blocked'));
       req.onerror = () => reject(req.error);
     });
   }

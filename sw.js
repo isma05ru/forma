@@ -1,6 +1,6 @@
 // Работа без сети. При любой правке файлов программы поднимайте номер версии:
 // иначе телефон продолжит показывать прежние файлы из своего запаса.
-const VERSION = 'forma-1';
+const VERSION = 'forma-2';
 const FILES = ['./', 'index.html', 'styles.css', 'data.js', 'db.js', 'app.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
