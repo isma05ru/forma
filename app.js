@@ -1284,10 +1284,22 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function boot() {
+  // Регистрация идёт первой и не зависит от загрузки данных: если версия
+  // встала криво и хранилище не открылось, вылечить это может только обновление.
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    // Пришла новая версия: перезагружаемся сразу, но только если человек ничем
+    // не занят - посреди тренировки или открытой формы страницу не трогаем,
+    // тогда новая версия откроется при следующем запуске.
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !P && !document.querySelector('.sheet-wrap, .dialog-wrap')) location.reload();
+    });
+    navigator.serviceWorker.register('sw.js').catch((e) => console.error(e));
+  }
   try { await load(); }
   catch (e) {
     console.error(e);
-    $('#view').innerHTML = '<div class="empty">Не удалось открыть хранилище данных. В частном режиме Safari оно недоступно - откройте программу в обычной вкладке или со значка на экране.</div>';
+    $('#view').innerHTML = '<div class="empty">Не удалось открыть хранилище данных. Закройте программу и откройте её снова - обычно этого достаточно. В частном режиме Safari хранилище недоступно: откройте программу в обычной вкладке или со значка на экране.</div>';
     return;
   }
   render();
@@ -1298,16 +1310,6 @@ async function boot() {
       <p class="muted">Отметьте инвентарь - покажу тренировки, которые с ним можно делать. Поменять можно в любой момент в профиле.</p>
       <div class="chips wrap">${equipToggles()}</div>
       <button class="btn primary block" data-a="eqDone">Готово</button>`);
-  }
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-    // Пришла новая версия: перезагружаемся сразу, но только если человек ничем
-    // не занят - посреди тренировки или открытой формы страницу не трогаем,
-    // тогда новая версия откроется при следующем запуске.
-    const hadController = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (hadController && !P && !document.querySelector('.sheet-wrap, .dialog-wrap')) location.reload();
-    });
-    navigator.serviceWorker.register('sw.js').catch((e) => console.error(e));
   }
 }
 boot();

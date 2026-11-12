@@ -1,6 +1,6 @@
 // Работа без сети. При любой правке файлов программы поднимайте номер версии:
 // иначе телефон продолжит показывать прежние файлы из своего запаса.
-const VERSION = 'forma-3';
+const VERSION = 'forma-4';
 const FILES = ['./', 'index.html', 'styles.css', 'data.js', 'db.js', 'app.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-512.png'];
 
 // Каждый файл версии запрашивается с её номером в адресе и в обход запасов
